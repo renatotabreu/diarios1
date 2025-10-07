@@ -23,8 +23,8 @@ EMAIL_REMETENTE = os.getenv('EMAIL_REMETENTE')
 SENHA_REMETENTE = os.getenv('SENHA_REMETENTE')
 EMAIL_DESTINATARIO = os.getenv('EMAIL_DESTINATARIO')
 PALAVRAS_CHAVE = []
-URL_DOE = 'https://www.cge.ce.gov.br/diario-oficial-do-estado/'
-URL_ALCE = 'https://www.al.ce.gov.br/index.php/diario-da-assembleia'
+URL_DOE = 'http://pesquisa.doe.seplag.ce.gov.br/doepesquisa/sead.do?page=ultimasEdicoes&cmd=11&action=Ultimas'
+URL_ALCE = 'https://doalece.al.ce.gov.br/publico/ultimas-edicoes'
 
 def buscar_e_enviar_diarios():
     print("Iniciando busca por diários...")
