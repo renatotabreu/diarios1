@@ -9,7 +9,7 @@ import os
 from dotenv import load_dotenv
 import urllib3
 
-# Ignora avisos de SSL (necessário para o site do DOE)
+# Ignora avisos de SSL (uma boa prática a se manter)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 load_dotenv()
@@ -19,60 +19,65 @@ EMAIL_REMETENTE = os.getenv('EMAIL_REMETENTE')
 SENHA_REMETENTE = os.getenv('SENHA_REMETENTE')
 EMAIL_DESTINATARIO = os.getenv('EMAIL_DESTINATARIO')
 
-# URLs dos portais
-URL_DOE = "https://doe.seplag.ce.gov.br/diario-completo"
-# --- ALTERAÇÃO AQUI: NOVA URL DA API DA ALCE ---
-URL_ALCE_API = "https://doalece.al.ce.gov.br/api/publico/publicacoes/ultimas"
-BASE_URL_ALCE_DOWNLOAD = "https://doalece.al.ce.gov.br"
+# --- ALTERAÇÃO AQUI: NOVA URL DO DOE ---
+URL_DOE = "http://pesquisa.doe.seplag.ce.gov.br/doepesquisa/sead.do?page=ultimasEdicoes&cmd=11&action=Ultimas"
+URL_ALCE = "https://doalece.al.ce.gov.br/publico/ultimas-edicoes"
 
 def buscar_diario_doe(data_alvo):
-    """Busca o Diário Oficial do Estado (DOE) para uma data específica."""
+    # --- ALTERAÇÃO AQUI: Lógica reescrita para a nova página do DOE (baseada em tabela) ---
     try:
-        print(f"Buscando no Diário Oficial do Estado (DOE) para a data {data_alvo.strftime('%d/%m/%Y')}...")
+        data_str_busca = data_alvo.strftime('%d/%m/%Y')
+        print(f"Buscando no site do DOE por diários da data {data_str_busca}...")
         response = requests.get(URL_DOE, headers={'User-Agent': 'Mozilla/5.0'}, verify=False, timeout=30)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        data_str = data_alvo.strftime('%d/%m/%Y')
-        cards = soup.find_all('div', class_='card-daily')
-        for card in cards:
-            data_tag = card.find('p')
-            if data_tag and data_str in data_tag.get_text():
-                link_tag = card.find('a', class_='btn-secondary')
+
+        # A página usa uma tabela para listar os diários
+        tabela_resultados = soup.find('table', id='resultados')
+        if not tabela_resultados:
+            print("Não foi possível encontrar a tabela de resultados no site do DOE.")
+            return None
+
+        linhas = tabela_resultados.find_all('tr')
+        for linha in linhas:
+            celulas = linha.find_all('td')
+            # Verifica se a linha tem o número esperado de células (ex: 3)
+            if len(celulas) >= 3 and data_str_busca in celulas[1].get_text(strip=True):
+                # A data foi encontrada na segunda célula. O link está na terceira.
+                link_tag = celulas[2].find('a')
                 if link_tag and link_tag.get('href'):
-                    return link_tag.get('href')
+                    # O link é relativo, então precisamos construir a URL completa
+                    url_base = "http://pesquisa.doe.seplag.ce.gov.br/doepesquisa/"
+                    return requests.compat.urljoin(url_base, link_tag.get('href'))
+
     except requests.exceptions.RequestException as e:
         print(f"Erro ao acessar o site do DOE: {e}")
     return None
 
 def buscar_diario_alce(data_alvo):
-    """Busca o Diário Oficial da ALCE via API para uma data específica."""
+    # Esta função, corrigida na etapa anterior, permanece a mesma.
     try:
-        print(f"Buscando no Diário da ALCE via API para a data {data_alvo.strftime('%Y-%m-%d')}...")
-        response = requests.get(URL_ALCE_API, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30)
+        data_str_busca = data_alvo.strftime('%d/%m/%Y')
+        print(f"Buscando no site da ALCE por diários da data {data_str_busca}...")
+        response = requests.get(URL_ALCE, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30)
         response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        publicacoes = response.json() # A resposta da API é em formato JSON
-        data_str = data_alvo.strftime('%Y-%m-%d')
-
-        for pub in publicacoes:
-            # A data na API vem no formato "2025-10-07T..."
-            if pub.get('dataPublicacao', '').startswith(data_str):
-                link_download_parcial = pub.get('linkDownload')
-                if link_download_parcial:
-                    # Monta a URL completa para o download
-                    return f"{BASE_URL_ALCE_DOWNLOAD}{link_download_parcial}"
+        linhas_tabela = soup.find_all('tr')
+        for linha in linhas_tabela:
+            celula_data = linha.find('td', string=lambda text: text and data_str_busca in text)
+            if celula_data:
+                link_tag = linha.find('a', href=lambda href: href and 'download' in href)
+                if link_tag and link_tag.get('href'):
+                    return requests.compat.urljoin(URL_ALCE, link_tag.get('href'))
     except requests.exceptions.RequestException as e:
-        print(f"Erro ao acessar a API da ALCE: {e}")
-    except requests.exceptions.JSONDecodeError:
-        print("Erro: A resposta da API da ALCE não é um JSON válido.")
+        print(f"Erro ao acessar o site da ALCE: {e}")
     return None
 
 def buscar_e_enviar_diarios():
     print("Iniciando busca por diários...")
     hoje = datetime.now()
     ontem = hoje - timedelta(days=1)
-    
     pdfs_encontrados = {}
 
     # --- Busca no DOE (hoje, com fallback para ontem) ---
@@ -80,7 +85,6 @@ def buscar_e_enviar_diarios():
     if not url_pdf_doe:
         print("Não encontrou o diário do DOE de hoje, tentando o de ontem...")
         url_pdf_doe = buscar_diario_doe(ontem)
-    
     if url_pdf_doe:
         print(f"PDF do DOE encontrado: {url_pdf_doe}")
         pdfs_encontrados['DOE'] = url_pdf_doe
@@ -92,7 +96,6 @@ def buscar_e_enviar_diarios():
     if not url_pdf_alce:
         print("Não encontrou o diário da ALCE de hoje, tentando o de ontem...")
         url_pdf_alce = buscar_diario_alce(ontem)
-
     if url_pdf_alce:
         print(f"PDF da ALCE encontrado: {url_pdf_alce}")
         pdfs_encontrados['ALCE'] = url_pdf_alce
@@ -109,21 +112,20 @@ def buscar_e_enviar_diarios():
     for nome, url in pdfs_encontrados.items():
         try:
             print(f"Baixando {nome} de {url}...")
-            response_pdf = requests.get(url, stream=True, verify=False, timeout=60) # Timeout maior para downloads
+            response_pdf = requests.get(url, stream=True, verify=False, timeout=60)
             response_pdf.raise_for_status()
             pdf_bytes = response_pdf.content
-            nome_arquivo_data = url.split('/')[-2] # Pega o ID da publicação como nome
-            nome_arquivo = f"{nome}_{nome_arquivo_data}.pdf"
+            nome_arquivo = f"{nome}_{datetime.now().strftime('%Y-%m-%d')}.pdf"
             arquivos_para_enviar.append({'nome': nome_arquivo, 'conteudo': pdf_bytes})
         except Exception as e:
             print(f"Falha ao baixar ou processar o PDF de {nome}: {e}")
-    
     if arquivos_para_enviar:
         enviar_email(arquivos_para_enviar, conteudo_email)
     else:
         print("Nenhum PDF pôde ser baixado. Nenhum e-mail será enviado.")
 
 def enviar_email(anexos, corpo_email):
+    # (Esta função permanece exatamente a mesma)
     print("Preparando para enviar email...")
     msg = MIMEMultipart()
     msg['From'] = EMAIL_REMETENTE
