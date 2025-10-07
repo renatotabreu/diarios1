@@ -23,7 +23,7 @@ EMAIL_DESTINATARIO = os.getenv('EMAIL_DESTINATARIO')
 
 # Palavras-chave para buscar dentro dos PDFs (deixe a lista vazia para não filtrar)
 # Exemplo: PALAVRAS_CHAVE = ['nomeação', 'licitação', 'edital']
-PALAVRAS_CHAVE = []
+PALAVRAS_CHAVE = ['diretor geral, diretor-geral, lgpd, proteção de dados pessoais, inteligência artificial, lei geral de proteção de dados pessoais']
 
 # --- URLS DOS DIÁRIOS ---
 URL_DOE = 'https://www.cge.ce.gov.br/diario-oficial-do-estado/'
